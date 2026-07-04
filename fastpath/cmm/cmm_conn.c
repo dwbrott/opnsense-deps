@@ -683,6 +683,50 @@ handle_pf_ready(struct cmm_global *g, const struct pfn_event *ev)
 /*
  * Handle a DELETE event (PF state removed).
  */
+/*
+ * RT_SKIPPED — the kernel declined offload because the state carries
+ * a pf routing override (route-to / reply-to / dup-to); the flow
+ * stays on the software path, which honors pf routing.  Log the
+ * decision with the policy egress details so multi-WAN behavior is
+ * observable.  Groundwork for offloading these flows out their
+ * policy egress in a future change.
+ */
+static void
+handle_pf_rt_skipped(struct cmm_global *g, struct pfn_event *ev)
+{
+	static const char *rt_names[] = {
+		"none", "fastroute", "route-to", "dup-to", "reply-to"
+	};
+	struct pfn_state_rt rq;
+	char gw[INET6_ADDRSTRLEN];
+	const char *rtn;
+
+	rtn = (ev->rt < 5) ? rt_names[ev->rt] : "?";
+
+	memset(&rq, 0, sizeof(rq));
+	rq.id = ev->id;
+	rq.creatorid = ev->creatorid;
+	if (ioctl(g->pfnotify_fd, PFN_IOC_GET_STATE_RT, &rq) < 0) {
+		/* Older module without the query ioctl, or state gone. */
+		cmm_print(CMM_LOG_INFO,
+		    "conn: pf %s override on %s flow id=%016llx -- "
+		    "staying in software (policy routing)",
+		    rtn, ev->key[0].proto == IPPROTO_TCP ? "TCP" : "UDP",
+		    (unsigned long long)ev->id);
+		return;
+	}
+
+	if (inet_ntop(rq.af, rq.rt_addr, gw, sizeof(gw)) == NULL)
+		strlcpy(gw, "?", sizeof(gw));
+
+	cmm_print(CMM_LOG_INFO,
+	    "conn: pf %s via %s dev %s -- flow id=%016llx staying in "
+	    "software (policy routing)",
+	    rtn, gw, rq.rt_ifname[0] ? rq.rt_ifname : "?",
+	    (unsigned long long)ev->id);
+}
+
+
 static void
 handle_pf_delete(struct cmm_global *g, const struct pfn_event *ev)
 {
@@ -749,6 +793,10 @@ cmm_conn_event(struct cmm_global *g)
 
 		case PFN_EVENT_DELETE:
 			handle_pf_delete(g, &ev);
+			break;
+
+		case PFN_EVENT_RT_SKIPPED:
+			handle_pf_rt_skipped(g, &ev);
 			break;
 
 		default:

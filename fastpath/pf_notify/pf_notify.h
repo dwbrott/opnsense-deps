@@ -25,6 +25,9 @@
 #define PFN_EVENT_INSERT	1	/* new PF state created */
 #define PFN_EVENT_READY		2	/* state is offload-ready */
 #define PFN_EVENT_DELETE	3	/* PF state removed */
+#define PFN_EVENT_RT_SKIPPED	4	/* offload declined: pf routing
+					 * override (route-to/reply-to/
+					 * dup-to); flow stays in software */
 
 /*
  * Compact state key — mirrors pf_state_key fields needed by CMM.
@@ -62,7 +65,9 @@ struct pfn_event {
 	uint16_t		_pad1;
 	char			ifname[16];	/* IFNAMSIZ */
 	struct pfn_state_key	key[2];		/* [0]=wire, [1]=stack */
-	uint8_t			_pad2[8];	/* pad to 128 bytes */
+	uint8_t			rt;		/* pf routing override type
+					 * (0 = none; see netpfil/pf/pf.h) */
+	uint8_t			_pad2[7];	/* pad to 128 bytes */
 };
 
 #ifdef _KERNEL
@@ -93,5 +98,23 @@ struct pfn_counter_update {
 #endif
 
 #define PFN_IOC_UPDATE_COUNTERS	_IOW('N', 1, struct pfn_counter_update)
+
+/* --- Routing-override query (userspace -> kernel via ioctl) ---
+ *
+ * Fetches the pf routing override details for a state, so the
+ * consumer can log (and, in a future change, program) the policy
+ * egress.  id/creatorid are IN; remaining fields are OUT. */
+
+struct pfn_state_rt {
+	uint64_t	id;		/* in: PF state ID */
+	uint32_t	creatorid;	/* in: PF state creator ID */
+	uint8_t		rt;		/* out: override type (0 = none) */
+	uint8_t		af;		/* out: address family */
+	char		rt_ifname[16];	/* out: policy egress interface */
+	uint8_t		rt_addr[16];	/* out: policy gateway (pf_addr) */
+	uint8_t		pad[2];
+};
+
+#define PFN_IOC_GET_STATE_RT	_IOWR('N', 2, struct pfn_state_rt)
 
 #endif /* PF_NOTIFY_H */

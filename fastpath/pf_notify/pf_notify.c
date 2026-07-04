@@ -164,6 +164,7 @@ pfn_fill_event(struct pfn_event *ev, uint8_t type, struct pf_kstate *s)
 	ev->creatorid = s->creatorid;
 	ev->state_flags = s->state_flags;
 	strlcpy(ev->ifname, s->kif->pfik_name, sizeof(ev->ifname));
+	ev->rt = s->rt;
 
 	/* Wire key (PF_SK_WIRE = 0) */
 	memcpy(ev->key[0].addr[0], &s->key[PF_SK_WIRE]->addr[0],
@@ -246,6 +247,45 @@ pfn_update_state(struct pf_kstate *s)
 
 	if (!pfn_open)
 		return;
+
+	/*
+	 * Never offload states pf routes contrary to the FIB
+	 * (route-to / reply-to / dup-to).  CMM resolves flow egress
+	 * from the system routing table (PF_ROUTE RTM_GET), so a
+	 * policy-routed state would be programmed out the default
+	 * route's interface, contradicting pf's routing decision
+	 * (we-are-mono/opnsense-deps#18).  Such states stay on the
+	 * software path, which honors pf routing; all other states
+	 * offload as before.
+	 */
+	if (s->rt != PF_NOPFROUTE) {
+		/*
+		 * Emit a one-shot RT_SKIPPED event (reusing the
+		 * notified bitmap) so the consumer can observe the
+		 * decision; older consumers ignore unknown event
+		 * types.  Gateway/interface details are available
+		 * via PFN_IOC_GET_STATE_RT.
+		 */
+		if (pfn_is_notified(s->id))
+			return;
+		pfn_fill_event(&ev, PFN_EVENT_RT_SKIPPED, s);
+		mtx_lock(&pfn_mtx);
+		if (pfn_is_notified(s->id)) {
+			mtx_unlock(&pfn_mtx);
+			return;
+		}
+		if (ring_put(&pfn_ring, &ev) == 0) {
+			pfn_mark_notified(s->id);
+			pfn_events_total++;
+			selwakeup(&pfn_rsel);
+			KNOTE_LOCKED(&pfn_rsel.si_note, 0);
+			wakeup(&pfn_ring);
+		} else {
+			pfn_events_dropped++;
+		}
+		mtx_unlock(&pfn_mtx);
+		return;
+	}
 
 	proto = s->key[PF_SK_WIRE]->proto;
 	src_st = s->src.state;
@@ -393,6 +433,28 @@ pfn_dev_ioctl(struct cdev *dev __unused, u_long cmd, caddr_t data,
 	int error;
 
 	switch (cmd) {
+	case PFN_IOC_GET_STATE_RT: {
+		struct pfn_state_rt *rq = (struct pfn_state_rt *)data;
+		struct pf_kstate *st;
+
+		CURVNET_SET(TD_TO_VNET(td));
+		st = pf_find_state_byid(rq->id, rq->creatorid);
+		if (st == NULL) {
+			CURVNET_RESTORE();
+			return (ENOENT);
+		}
+		rq->rt = st->rt;
+		rq->af = st->key[0] != NULL ? st->key[0]->af : 0;
+		memset(rq->rt_ifname, 0, sizeof(rq->rt_ifname));
+		if (st->rt_kif != NULL)
+			strlcpy(rq->rt_ifname, st->rt_kif->pfik_name,
+			    sizeof(rq->rt_ifname));
+		memcpy(rq->rt_addr, &st->rt_addr, sizeof(rq->rt_addr));
+		PF_STATE_UNLOCK(st);
+		CURVNET_RESTORE();
+		return (0);
+	}
+
 	case PFN_IOC_UPDATE_COUNTERS:
 		break;
 	default:
