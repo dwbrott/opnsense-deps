@@ -697,11 +697,24 @@ handle_pf_rt_skipped(struct cmm_global *g, struct pfn_event *ev)
 	static const char *rt_names[] = {
 		"none", "fastroute", "route-to", "dup-to", "reply-to"
 	};
+	struct pfn_state_key *k = &ev->key[1];	/* stack key: original tuple */
 	struct pfn_state_rt rq;
+	char src[INET6_ADDRSTRLEN], dst[INET6_ADDRSTRLEN];
 	char gw[INET6_ADDRSTRLEN];
-	const char *rtn;
+	const char *rtn, *proto;
+	int sidx, didx;
+
+	/* Same direction convention as pfn_extract_tuples(). */
+	sidx = (ev->direction == PF_IN) ? 0 : 1;
+	didx = (ev->direction == PF_IN) ? 1 : 0;
 
 	rtn = (ev->rt < 5) ? rt_names[ev->rt] : "?";
+	proto = (k->proto == IPPROTO_TCP) ? "TCP" :
+	    (k->proto == IPPROTO_UDP) ? "UDP" : "?";
+	if (inet_ntop(k->af, k->addr[sidx], src, sizeof(src)) == NULL)
+		strlcpy(src, "?", sizeof(src));
+	if (inet_ntop(k->af, k->addr[didx], dst, sizeof(dst)) == NULL)
+		strlcpy(dst, "?", sizeof(dst));
 
 	memset(&rq, 0, sizeof(rq));
 	rq.id = ev->id;
@@ -709,10 +722,10 @@ handle_pf_rt_skipped(struct cmm_global *g, struct pfn_event *ev)
 	if (ioctl(g->pfnotify_fd, PFN_IOC_GET_STATE_RT, &rq) < 0) {
 		/* Older module without the query ioctl, or state gone. */
 		cmm_print(CMM_LOG_INFO,
-		    "conn: pf %s override on %s flow id=%016llx -- "
+		    "conn: %s %s:%u -> %s:%u pf %s override -- "
 		    "staying in software (policy routing)",
-		    rtn, ev->key[0].proto == IPPROTO_TCP ? "TCP" : "UDP",
-		    (unsigned long long)ev->id);
+		    proto, src, ntohs(k->port[sidx]), dst, ntohs(k->port[didx]),
+		    rtn);
 		return;
 	}
 
@@ -720,10 +733,10 @@ handle_pf_rt_skipped(struct cmm_global *g, struct pfn_event *ev)
 		strlcpy(gw, "?", sizeof(gw));
 
 	cmm_print(CMM_LOG_INFO,
-	    "conn: pf %s via %s dev %s -- flow id=%016llx staying in "
+	    "conn: %s %s:%u -> %s:%u pf %s via %s dev %s -- staying in "
 	    "software (policy routing)",
-	    rtn, gw, rq.rt_ifname[0] ? rq.rt_ifname : "?",
-	    (unsigned long long)ev->id);
+	    proto, src, ntohs(k->port[sidx]), dst, ntohs(k->port[didx]),
+	    rtn, gw, rq.rt_ifname[0] ? rq.rt_ifname : "?");
 }
 
 
