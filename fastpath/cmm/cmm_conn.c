@@ -697,12 +697,15 @@ handle_pf_rt_skipped(struct cmm_global *g, struct pfn_event *ev)
 	static const char *rt_names[] = {
 		"none", "fastroute", "route-to", "dup-to", "reply-to"
 	};
+	static char last_msg[1024] = {0};
 	struct pfn_state_key *k = &ev->key[1];	/* stack key: original tuple */
 	struct pfn_state_rt rq;
 	char src[INET6_ADDRSTRLEN], dst[INET6_ADDRSTRLEN];
 	char gw[INET6_ADDRSTRLEN];
 	const char *rtn, *proto;
 	int sidx, didx;
+	int len;
+	char buf[1024];
 
 	/* Same direction convention as pfn_extract_tuples(). */
 	sidx = (ev->direction == PF_IN) ? 0 : 1;
@@ -721,22 +724,36 @@ handle_pf_rt_skipped(struct cmm_global *g, struct pfn_event *ev)
 	rq.creatorid = ev->creatorid;
 	if (ioctl(g->pfnotify_fd, PFN_IOC_GET_STATE_RT, &rq) < 0) {
 		/* Older module without the query ioctl, or state gone. */
-		cmm_print(CMM_LOG_INFO,
+		len = snprintf(buf, sizeof(buf),
 		    "conn: %s %s:%u -> %s:%u pf %s override -- "
 		    "staying in software (policy routing)",
 		    proto, src, ntohs(k->port[sidx]), dst, ntohs(k->port[didx]),
 		    rtn);
+		if (len > 0 && (unsigned)len < sizeof(buf)) {
+			buf[len] = '\0';
+			if (strcmp(buf, last_msg) != 0) {
+				strlcpy(last_msg, buf, sizeof(last_msg));
+				cmm_print(CMM_LOG_INFO, "%s", buf);
+			}
+		}
 		return;
 	}
 
 	if (inet_ntop(rq.af, rq.rt_addr, gw, sizeof(gw)) == NULL)
 		strlcpy(gw, "?", sizeof(gw));
 
-	cmm_print(CMM_LOG_INFO,
+	len = snprintf(buf, sizeof(buf),
 	    "conn: %s %s:%u -> %s:%u pf %s via %s dev %s -- staying in "
 	    "software (policy routing)",
 	    proto, src, ntohs(k->port[sidx]), dst, ntohs(k->port[didx]),
 	    rtn, gw, rq.rt_ifname[0] ? rq.rt_ifname : "?");
+	if (len > 0 && (unsigned)len < sizeof(buf)) {
+		buf[len] = '\0';
+		if (strcmp(buf, last_msg) != 0) {
+			strlcpy(last_msg, buf, sizeof(last_msg));
+			cmm_print(CMM_LOG_INFO, "%s", buf);
+		}
+	}
 }
 
 
