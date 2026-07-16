@@ -1,4 +1,4 @@
-From 92ae647baa14b27422a9a37e2e823054327d2ae4 Mon Sep 17 00:00:00 2001
+From 48f9b9d3c0e3a54220a44e26dd0dfdebab06f7ad Mon Sep 17 00:00:00 2001
 From: Maurice Walker <maurice@walker.earth>
 Date: Wed, 17 Jun 2026 02:38:55 +0200
 Subject: [PATCH] Add Mono CORE_PACKAGESITE, mirror, repo and fingerprint,
@@ -6,12 +6,14 @@ Subject: [PATCH] Add Mono CORE_PACKAGESITE, mirror, repo and fingerprint,
 
 ---
  Mk/version.mk                                 |  2 +-
- plist                                         |  2 +
+ plist                                         |  3 +
  .../trusted/opnsense.mono.si.20260305         |  2 +
+ .../trusted/opnsense.mono.si.20260716         |  2 +
  src/etc/pkg/repos/MonoGateway.conf.shadow.in  |  7 ++
  .../OPNsense/Core/repositories/opnsense.xml   | 86 +------------------
- 5 files changed, 15 insertions(+), 84 deletions(-)
+ 6 files changed, 18 insertions(+), 84 deletions(-)
  create mode 100644 src/etc/pkg/fingerprints/OPNsense/trusted/opnsense.mono.si.20260305
+ create mode 100644 src/etc/pkg/fingerprints/OPNsense/trusted/opnsense.mono.si.20260716
  create mode 100644 src/etc/pkg/repos/MonoGateway.conf.shadow.in
 
 diff --git a/Mk/version.mk b/Mk/version.mk
@@ -28,18 +30,19 @@ index 85c078b1aac..dba5004963f 100644
  CORE_WWW?=		https://opnsense.org/
  CORE_USER?=		wwwonly
 diff --git a/plist b/plist
-index 1b059f01119..d871d4328e4 100644
+index 7f9794916c1..09a0e91a147 100644
 --- a/plist
 +++ b/plist
-@@ -80,6 +80,7 @@
+@@ -80,6 +80,8 @@
  /usr/local/etc/pkg/fingerprints/OPNsense/revoked/pkg.opnsense.org.20240611
  /usr/local/etc/pkg/fingerprints/OPNsense/revoked/pkg.opnsense.org.20241217
  /usr/local/etc/pkg/fingerprints/OPNsense/revoked/pkg.opnsense.org.20250710
 +/usr/local/etc/pkg/fingerprints/OPNsense/trusted/opnsense.mono.si.20260305
++/usr/local/etc/pkg/fingerprints/OPNsense/trusted/opnsense.mono.si.20260716
  /usr/local/etc/pkg/fingerprints/OPNsense/trusted/pkg.opnsense.org.20260120
+ /usr/local/etc/pkg/fingerprints/OPNsense/trusted/pkg.opnsense.org.20260608
  /usr/local/etc/rc
- /usr/local/etc/rc.bootup
-@@ -2571,5 +2572,6 @@
+@@ -2576,5 +2578,6 @@
  @sample /usr/local/etc/bogonsv6.sample
  @sample /usr/local/etc/config.xml.sample
  @shadow /usr/local/etc/pkg/repos/FreeBSD.conf.sample
@@ -54,6 +57,14 @@ index 00000000000..af6301792bd
 @@ -0,0 +1,2 @@
 +function: "sha256"
 +fingerprint: "ed8c6cdf38383853b0d6f4c6bf70efa1793d76a57e78317a53653404bcabd931"
+diff --git a/src/etc/pkg/fingerprints/OPNsense/trusted/opnsense.mono.si.20260716 b/src/etc/pkg/fingerprints/OPNsense/trusted/opnsense.mono.si.20260716
+new file mode 100644
+index 00000000000..48362100252
+--- /dev/null
++++ b/src/etc/pkg/fingerprints/OPNsense/trusted/opnsense.mono.si.20260716
+@@ -0,0 +1,2 @@
++function: "sha256"
++fingerprint: "8da295f8c3c4bc0817ac630e00c284fb2354f4fd27af4b72c58105186ff425f3"
 diff --git a/src/etc/pkg/repos/MonoGateway.conf.shadow.in b/src/etc/pkg/repos/MonoGateway.conf.shadow.in
 new file mode 100644
 index 00000000000..4947e72a217
